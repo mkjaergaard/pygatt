@@ -9,10 +9,10 @@ import string
 import thread
 from threading import Lock
 
-def reset_bluetooth_controller():
+def reset_bluetooth_controller(device = "hci0"):
     print("Re-initializing Bluetooth controller")
-    subprocess.Popen(["sudo", "hciconfig", "hci0", "down"]).wait()
-    subprocess.Popen(["sudo", "hciconfig", "hci0", "up"]).wait()
+    subprocess.Popen(["sudo", "hciconfig", device, "down"]).wait()
+    subprocess.Popen(["sudo", "hciconfig", device, "up"]).wait()
 
 def lescan(timeout=5):
     scan = pexpect.spawn("sudo hcitool lescan")
@@ -42,9 +42,9 @@ class BluetoothLeDevice(object):
     subscribed_handlers = {}
     running = True
 
-    def __init__(self, mac_address, bond=False):
+    def __init__(self, mac_address, hci_device = "hci0", bond=False):
         self.lock = Lock()
-        self.con = pexpect.spawn('gatttool -b ' + mac_address + ' --interactive')
+        self.con = pexpect.spawn('gatttool -b ' + mac_address + ' -i ' + hci_device + ' --interactive')
         self.con.expect('\[LE\]>', timeout=1)
         if bond:
             self.con.sendline('sec-level high')
