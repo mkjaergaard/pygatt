@@ -34,8 +34,8 @@ def lescan(timeout=5):
 class BluetoothLeError(Exception): pass
 
 class BluetoothLeDevice(object):
-    DEFAULT_TIMEOUT_S = .5
-    DEFAULT_ASYNC_TIMEOUT_S = .5
+    DEFAULT_TIMEOUT_S = 8.0
+    DEFAULT_ASYNC_TIMEOUT_S = 8.0
     connection_lock = threading.RLock()
     handles = {}
     callbacks = defaultdict(set)
@@ -50,10 +50,23 @@ class BluetoothLeDevice(object):
             self.con.sendline('sec-level high')
         self.con.sendline('connect')
         try:
-            self.con.expect('Connection successful.*\[LE\]>', timeout=5)
+            self.con.expect('\[CON\]', timeout=5)
         except pexpect.TIMEOUT:
-            raise BluetoothLeError("Unable to connect to device")
-        thread.start_new_thread(self.run, ())
+            raise BluetoothLeError(self.con.before)#"Unable to connect to device")
+        self.thread = thread.start_new_thread(self.run, ())
+
+    def __del__(self):
+        if self.running:
+            self.stop()
+            self.thread.join()
+
+        if self.con.isalive():
+            self.con.sendline('exit') # Try to exit gracefully
+            self.con.sendline('exit') # Try to exit gracefully
+            for i in range(10):
+                if not self.con.isalive():
+                    break
+                self.sleep(0.1)
 
     def get_handle(self, uuid):
         """Look up and return the handle for an attribute by its UUID.
@@ -77,7 +90,6 @@ class BluetoothLeDevice(object):
                     # handle value.
                     # ...just split on ':'!
                     matching_line = self.con.before.splitlines(True)[-1]
-                    self.handles[uuid] = int(re.match("\x1b\[Khandle: 0x([a-fA-F0-9]{4})",
                     self.handles[uuid] = int(re.match("handle: 0x([a-fA-F0-9]{4})",
                             matching_line).group(1), 16)
         return self.handles.get(uuid)
@@ -120,12 +132,12 @@ class BluetoothLeDevice(object):
             else:
                 cmd = 'cmd'
             cmd = 'char-write-%s 0x%02x %s' % (cmd, handle, hexstring)
-            print("Sending command: %s" % cmd)
+            #print("Sending command: %s" % cmd)
             self.con.sendline(cmd)
 
             if wait_for_response:
                 self._expect('Characteristic value was written successfully')
-            print("Sent.")
+            #print("Sent.")
 
     def char_read_uuid(self, uuid):
         with self.connection_lock:
@@ -137,7 +149,7 @@ class BluetoothLeDevice(object):
     def char_read_hnd(self, handle):
         with self.connection_lock:
             self.con.sendline('char-read-hnd 0x%02x' % handle)
-            self._expect('descriptor: .*? \r')
+            self._expect('descriptor: .*?\r')
             rval = self.con.after.split()[1:]
             return [int(n, 16) for n in rval]
 
